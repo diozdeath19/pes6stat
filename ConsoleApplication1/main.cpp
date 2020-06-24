@@ -13,7 +13,7 @@ using namespace std;
 #define MAX_OF_PLAYED_PLAYERS 18;
 #define MAX_OF_ROSTER_PLAYERS 32;
 #define NOT_PLAYED -1;
-#define VERSION_APP 1.3;
+#define VERSION_APP "1.4";
 #define HALF_1 0;
 #define HALF_2 1;
 #define EX_HALF_1 2;
@@ -31,7 +31,9 @@ string currentDateTime();
 void setTeamName(HANDLE pHandle, DWORD addr, char* name);
 void setPlayersDribbleDistances(HANDLE pHandle, DWORD baseAddr, int* arr, int* playedPlayers);
 void setPlayersStatsOffset68(HANDLE pHandle, DWORD baseAddr, int* arr, int* playedPlayers);
+void setPlayersInjuries(HANDLE pHandle, DWORD baseAddr, int* arr, int* playedPlayers);
 void setPlayersNames(HANDLE pHandle, DWORD addr, string* arr);
+void setRealPlayerName(HANDLE pHandle, DWORD addr, string* name);
 
 __int8 matchStarted = 0;
 __int8 matchStartedBuf = 0;
@@ -58,6 +60,12 @@ int playersHomeClearedPasses[32] = { 0 };
 int playersGuestClearedPasses[32] = { 0 };
 int playersHomePossessionOfBall[32] = { 0 };
 int playersGuestPossessionOfBall[32] = { 0 };
+int playersHomeInjuries[32] = { 0 };
+int playersGuestInjuries[32] = { 0 };
+int playersHomeTotalShots[32] = { 0 };
+int playersGuestTotalShots[32] = { 0 };
+int playersHomeShotsOnTarget[32] = { 0 };
+int playersGuestShotsOnTarget[32] = { 0 };
 string playersHomeNames[32];
 string playersGuestNames[32];
 int teamHomeScore = 0;
@@ -73,6 +81,8 @@ wstringstream fileName;
 BOOL isTeamPlayersReaded = false;
 int matchMinute;
 int matchStady;
+string realPlayerHomeNickName;
+string realPlayerGuestNickName;
 std::ofstream out;
 
 int main(int argc, char** argv) {
@@ -114,6 +124,14 @@ int main(int argc, char** argv) {
 	const DWORD playersGuestClearedPassesAddr = 0x10CFDA0;
 	const DWORD playersHomePossessionOfBallAddr = 0x10CF63E;
 	const DWORD playersGuestPossessionOfBallAddr = 0x10CFD8E;
+	const DWORD playersHomeInjuriesAddr = 0x3BCF631;
+	const DWORD playersGuestInjuriesAddr = 0x3BD5F31;
+	const DWORD realPlayerHomeNicknameAddr = 0x3BE6BE0;
+	const DWORD realPlayerGuestNicknameAddr = 0x3BE6C0E;
+	const DWORD playersHomeTotalShotsAddr = 0x1017B62;
+	const DWORD playersGuestTotalShotsAddr = 0x1017E56;
+	const DWORD playersHomeShotsOnTargetAddr = 0x1017B66;
+	const DWORD playersGuestShotsOnTargetAddr = 0x1017E5A;
 
 
 	USES_CONVERSION;
@@ -243,12 +261,6 @@ int main(int argc, char** argv) {
 			isTeamPlayersReaded = true;
 		}
 
-		fileName.str(L"");
-		fileName.clear();
-		fileName << dir << string(teamNameHome).c_str() << " - " << string(teamNameGuest).c_str() << " " << matchStartTime.c_str() << ".dat";
-		cout << "Record match " << string(teamNameHome) << " - " << string(teamNameGuest) << " " << matchStartTime << endl;
-		out << "Record match " << string(teamNameHome) << " - " << string(teamNameGuest) << " " << matchStartTime << endl;
-
 		if (!setTeamScore(pHandle, teamHomeScoreAddr, &teamHomeScore)) {
 			continue;
 		}
@@ -281,6 +293,33 @@ int main(int argc, char** argv) {
 
 		setPlayersStats(pHandle, playersHomeFoulsAddr, playersHomeFouls, playedPlayersHome);
 		setPlayersStats(pHandle, playersGuestFoulsAddr, playersGuestFouls, playedPlayersGuest);
+
+		setPlayersStats(pHandle, playersHomeTotalShotsAddr, playersHomeTotalShots, playedPlayersHome);
+		setPlayersStats(pHandle, playersGuestTotalShotsAddr, playersGuestTotalShots, playedPlayersGuest);
+
+		setPlayersStats(pHandle, playersHomeShotsOnTargetAddr, playersHomeShotsOnTarget, playedPlayersHome);
+		setPlayersStats(pHandle, playersGuestShotsOnTargetAddr, playersGuestShotsOnTarget, playedPlayersGuest);
+
+		setPlayersInjuries(pHandle, playersHomeInjuriesAddr, playersHomeInjuries, playedPlayersHome);
+		setPlayersInjuries(pHandle, playersGuestInjuriesAddr, playersGuestInjuries, playedPlayersGuest);
+
+		setRealPlayerName(pHandle, realPlayerHomeNicknameAddr, &realPlayerHomeNickName);
+		cout << "Home: " << realPlayerHomeNickName << endl;
+		setRealPlayerName(pHandle, realPlayerGuestNicknameAddr, &realPlayerGuestNickName);
+		cout << "Guest: " << realPlayerGuestNickName << endl;
+
+		fileName.str(L"");
+		fileName.clear();
+		if (realPlayerHomeNickName != string("") && realPlayerGuestNickName != string("")) {
+			fileName << dir << string(teamNameHome).c_str() << " (" << realPlayerHomeNickName.c_str() << ")" << " - " << string(teamNameGuest).c_str() << " (" << realPlayerGuestNickName.c_str() << ") " << matchStartTime.c_str() << ".dat";
+		} else {
+			fileName << dir << string(teamNameHome).c_str() << " - " << string(teamNameGuest).c_str() << " " << matchStartTime.c_str() << ".dat";
+		}
+		
+		cout << "Record match " << string(teamNameHome) << " - " << string(teamNameGuest) << " " << matchStartTime << endl;
+		out << "Record match " << string(teamNameHome) << " - " << string(teamNameGuest) << " " << matchStartTime << endl;
+		out << "Home real player: " << realPlayerHomeNickName;
+		out << "Guest real player: " << realPlayerGuestNickName;
 
 		// This values updates only after halftime
 		if (matchStady > 0) {
@@ -420,6 +459,30 @@ void createFileWithStats() {
 			ss.str(std::string());
 			ss.clear();
 		}
+
+		if (playersHomeInjuries[i] != 0) {
+			ss << playersHome[playedPlayersHome[i]];
+			//ss << playersHomeNames[playedPlayersHome[i]];
+			root["home"]["injuries"][ss.str()] = playersHomeInjuries[i];
+			ss.str(std::string());
+			ss.clear();
+		}
+
+		if (playersHomeTotalShots[i] != 0) {
+			ss << playersHome[playedPlayersHome[i]];
+			//ss << playersHomeNames[playedPlayersHome[i]];
+			root["home"]["totalShots"][ss.str()] = playersHomeTotalShots[i];
+			ss.str(std::string());
+			ss.clear();
+		}
+
+		if (playersHomeShotsOnTarget[i] != 0) {
+			ss << playersHome[playedPlayersHome[i]];
+			//ss << playersHomeNames[playedPlayersHome[i]];
+			root["home"]["shotsOnTarget"][ss.str()] = playersHomeShotsOnTarget[i];
+			ss.str(std::string());
+			ss.clear();
+		}
 			
 		if (playersGuestGoals[i] != 0) {
 			ss << playersGuest[playedPlayersGuest[i]];
@@ -492,6 +555,30 @@ void createFileWithStats() {
 			ss.str(std::string());
 			ss.clear();
 		}
+
+		if (playersGuestInjuries[i] != 0) {
+			ss << playersGuest[playedPlayersGuest[i]];
+			//ss << playersGuestNames[playedPlayersGuest[i]];
+			root["guest"]["injuries"][ss.str()] = playersGuestInjuries[i];
+			ss.str(std::string());
+			ss.clear();
+		}
+
+		if (playersGuestTotalShots[i] != 0) {
+			ss << playersGuest[playedPlayersGuest[i]];
+			//ss << playersGuestNames[playedPlayersGuest[i]];
+			root["guest"]["totalShots"][ss.str()] = playersGuestTotalShots[i];
+			ss.str(std::string());
+			ss.clear();
+		}
+
+		if (playersGuestShotsOnTarget[i] != 0) {
+			ss << playersGuest[playedPlayersGuest[i]];
+			//ss << playersGuestNames[playedPlayersGuest[i]];
+			root["guest"]["shotsOnTarget"][ss.str()] = playersGuestShotsOnTarget[i];
+			ss.str(std::string());
+			ss.clear();
+		}
 	}
 	
 	std::ofstream out;
@@ -532,6 +619,15 @@ void setTeamName(HANDLE pHandle, DWORD addr, char* name) {
 		cout << "Error by reading team name - code : " << GetLastError() << endl;
 		out << "Error by reading team name - code : " << GetLastError() << endl;
 	}
+}
+
+void setRealPlayerName(HANDLE pHandle, DWORD addr, string* name) {
+	char buf[50];
+	if (!ReadProcessMemory(pHandle, (LPCVOID)addr, buf, 50, NULL)) {
+		cout << "Error by reading real player name - code : " << GetLastError() << endl;
+		out << "Error by reading real player name - code : " << GetLastError() << endl;
+	}
+	*name = string(buf);
 }
 
 BOOL setPlayedPlayers(HANDLE pHandle, DWORD addr, int* playedPlayersHome, int* playedPlayersGuest) {
@@ -702,6 +798,35 @@ void setPlayersStatsOffset68(HANDLE pHandle, DWORD baseAddr, int* arr, int* play
 			return;
 		}
 		arr[i] = (int)val;
+	}
+}
+
+void setPlayersInjuries(HANDLE pHandle, DWORD baseAddr, int* arr, int* playedPlayers) {
+	DWORD offset = 0x348;
+	int maxOfPlayedPlayers = MAX_OF_PLAYED_PLAYERS;
+	int notPlayed = NOT_PLAYED;
+	__int8 val[2];
+	DWORD addr;
+	for (int i = 0; i < maxOfPlayedPlayers; i++) {
+		if (playedPlayers[i] == notPlayed) {
+			continue;
+		}
+		addr = baseAddr + i * offset;
+		if (!ReadProcessMemory(pHandle, (LPCVOID)addr, &val, 2, NULL)) {
+			cout << "Error by reading players injuries - code : " << GetLastError() << endl;
+			out << "Error by reading players injuries - code : " << GetLastError() << endl;
+			return;
+		}
+		int a = (int)val[0];
+		int b = (int)val[1];
+		if (a + b >= 7) {
+			arr[i] = 2;
+		} else if (a + b > 3) {
+			arr[i] = 1;
+		}
+		else {
+			arr[i] = 0;
+		}
 	}
 }
 
